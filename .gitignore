@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.log
+# Upstream Morpho contract repos, cloned locally for reference only (see README)
+reference/
+.pnpm-store/
