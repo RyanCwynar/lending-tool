@@ -1,4 +1,7 @@
 FROM node:24-alpine AS base
+# Node's built-in fetch (used by corepack to download pnpm, and by viem for RPC) ignores
+# HTTP(S)_PROXY unless this is set. It is a no-op when no proxy variables are present.
+ENV NODE_USE_ENV_PROXY=1
 RUN corepack enable
 WORKDIR /app
 
