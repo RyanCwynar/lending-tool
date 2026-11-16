@@ -41,9 +41,23 @@ Relative-cap breach and booked-vs-live drift alerts · discovering all vaults th
    Delivery worker ── POST JSON ──▶ subscriber webhook
      claim due rows (SKIP LOCKED), 2xx → delivered, else retry with backoff, give up after N
                  ▲
-   GraphQL API (yoga): read changes/deliveries, manage subscriptions
+   GraphQL API (yoga): visibility (changes, deliveries, health/lag) + manage subscriptions
 ```
-All three run in **one process** for the take-home; each is a separate loop so it could be split out later.
+## Three roles, one codebase, one image
+`node dist/main.js indexer | worker | api` (plus `ROLE=all` for local dev). docker-compose runs the same image three times, plus Postgres.
+
+| Role | Job | Writes | Copies |
+|---|---|---|---|
+| **Indexer** | Poll chain, filter `Submit`/`Accept`/`Revoke`, decode, update change status, queue a delivery for each matching subscription | `vault_event`, `timelock_change`, `delivery` (new rows), `sync_cursor` (the **only** writer of chain-derived data) | **Exactly one**, enforced with a Postgres advisory lock (`pg_try_advisory_lock`); a second instance exits |
+| **Delivery worker** | Claim due deliveries (`FOR UPDATE SKIP LOCKED`), POST them, record result, schedule retries | `delivery` status/attempts only | Any number |
+| **API** | Visibility into what the indexer and worker are doing, plus subscription management | `subscription` only | Any number |
+
+Why split:
+- **Different scaling rules:** the indexer is a singleton; workers and the API scale horizontally.
+- **Fault isolation:** the worker talks to untrusted external servers, so slow, broken or hostile endpoints can't stall indexing or the API.
+- **Security:** the worker is the only component that requests user-supplied URLs, which is the SSRF surface. We reject private and loopback URLs at subscription time; network-isolating the worker is listed as hardening.
+
+The roles share nothing but Postgres. Matching subscriptions happens in the **indexer**, in the same transaction as the event, so "it happened" and "these subscribers must hear about it" are saved together or not at all.
 
 ## Contract facts we rely on (from `reference/vault-v2/src`)
 - `event Submit(bytes4 indexed selector, bytes data, uint256 executableAt)`
@@ -74,7 +88,7 @@ All three run in **one process** for the take-home; each is a separate loop so i
 ## API sketch
 ```graphql
 type Query {
-  health: Health!
+  health: Health!          # DB + RPC reachable, indexer lag (chain head − last processed block)
   vaults: [Vault!]!
   timelockChanges(vault: Address, status: ChangeStatus, executableBefore: Timestamp): [TimelockChange!]!
   subscriptions: [Subscription!]!
@@ -101,6 +115,7 @@ Webhook payload: `{ id, type: "change.submitted"|"change.executed"|"change.revok
 | Migrations + config + vault ABI/decoder | 30m |
 | Indexer loop, lifecycle reducer, reorg check | 1h15 |
 | Outbox + delivery worker | 45m |
+| Role entry point, advisory lock, compose services | 20m |
 | GraphQL | 30m |
 | Tests + demo receiver | 30m |
 | README architecture + BusinessCase.md | 30m |
