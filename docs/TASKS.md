@@ -8,7 +8,7 @@ The 5-hour figure in the brief is a guide to the size of work, not a hard limit;
 |---|---|---|---|
 | 0 | Commit plan, task list, research doc, `CLAUDE.md` | AI context and sources are in the repo | done |
 | 1 | **Fixture capture** (`scripts/capture-fixture`): material blocks (number, hash, parent hash, timestamp, raw logs) for the 4 demo vaults, plus recorded `eth_call` results the service needs (vault `name`/`asset`, token `symbol`/`decimals`) | `fixtures/base-timelocks.json` committed; regenerated with one command given `RPC_URL` | done (648 logs, 172 headers, 58 recorded calls) |
-| 2 | **mock-rpc**: `eth_chainId`, `eth_blockNumber`, `eth_getLogs`, `eth_getBlockByNumber`, `eth_call` (from the recorded table); virtual head; `reset` / `play` / `pause` / `advance-to` | viem pointed at mock-rpc returns the same logs as Alchemy for the same range | todo |
+| 2 | **mock-rpc**: `eth_chainId`, `eth_blockNumber`, `eth_getLogs`, `eth_getBlockByNumber`, `eth_call` (from the recorded table); virtual head; `reset` / `play` / `pause` / `advance-to` | viem pointed at mock-rpc returns the same logs as Alchemy for the same range | done (9 tests; 333 Submits served via viem) |
 | 3 | **Schema**: migrations for `vault`, `vault_event`, `timelock_change`, `subscription`, `delivery` | `pnpm migrate` runs clean on a fresh DB | todo |
 | 4 | **Decoding**: calldata → function + args; `idData` → collateral / market / adapter label; selector → name; `unlimited` caps; unknown selectors kept raw | Unit tests pass on real calldata samples from the fixture | todo |
 | 5 | **Lifecycle reducer** (pure: ordered events → changes) | Tests: zero timelock, resubmission after accept/revoke, orphan accept | todo |
