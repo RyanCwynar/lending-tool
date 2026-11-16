@@ -30,7 +30,7 @@ PASS  /down gave up after max attempts (648 failed)
 PASS  /slow timed out (not delivered) without blocking others (0 failed, 58 pending)
 PASS  no request had an invalid signature
 ```
-Then explore in GraphiQL at <http://localhost:4000/graphql>:
+Then explore in GraphiQL at <http://localhost:4000/graphql>. It opens with 13 saved queries as tabs (health, what can execute now, vault history, time travel with `pendingAt`, revoked and stale changes, deliveries, subscribe and unsubscribe), defined in [playground.ts](service/src/graphql/playground.ts) and validated against the schema by a test. If you've already used GraphiQL in this browser, clear the site's storage (or use a private window) to load them. A taste:
 ```graphql
 {
   health { ok indexer { lastBlock lagBlocks chainTime } }

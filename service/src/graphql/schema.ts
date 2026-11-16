@@ -49,14 +49,14 @@ const typeDefs = /* GraphQL */ `
       limit: Int = 100
     ): [TimelockChange!]!
     timelockChange(id: ID!): TimelockChange
-    subscriptions: [Subscription!]!
+    subscriptions: [WebhookSubscription!]!
     deliveries(subscriptionId: ID, status: DeliveryStatus, limit: Int = 100): [Delivery!]!
   }
 
   type Mutation {
     "Subscribe a webhook. The returned secret is shown only once; use it to verify X-Signature."
     createSubscription(input: CreateSubscriptionInput!): CreatedSubscription!
-    deactivateSubscription(id: ID!): Subscription!
+    deactivateSubscription(id: ID!): WebhookSubscription!
   }
 
   input CreateSubscriptionInput {
@@ -68,7 +68,7 @@ const typeDefs = /* GraphQL */ `
   }
 
   type CreatedSubscription {
-    subscription: Subscription!
+    subscription: WebhookSubscription!
     secret: String!
   }
 
@@ -134,7 +134,8 @@ const typeDefs = /* GraphQL */ `
     deliveries: [Delivery!]!
   }
 
-  type Subscription {
+  "A webhook subscriber. Not named Subscription: GraphQL reserves that name for the real-time subscription root type."
+  type WebhookSubscription {
     id: ID!
     url: String!
     vaults: [String!]
@@ -330,7 +331,7 @@ export const schema = createSchema<GraphQLContext>({
         (await ctx.pool.query("SELECT * FROM delivery WHERE change_id = $1 ORDER BY created_at", [c.id])).rows,
     },
 
-    Subscription: {
+    WebhookSubscription: {
       startBlock: (s: SubscriptionRow) => s.start_block,
       createdAt: (s: SubscriptionRow) => s.created_at.toISOString(),
       deliveryCounts: async (s: SubscriptionRow, _a, ctx) => {
