@@ -14,7 +14,8 @@
     "migrate": "tsx --env-file-if-exists=.env src/db/migrate-cli.ts",
     "migrate:prod": "node dist/db/migrate-cli.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "capture-fixture": "tsx src/harness/capture-fixture.ts"
   },
   "dependencies": {
     "graphql": "^17.1.0",
