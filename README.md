@@ -30,7 +30,7 @@ PASS  /down gave up after max attempts (648 failed)
 PASS  /slow timed out (not delivered) without blocking others (0 failed, 58 pending)
 PASS  no request had an invalid signature
 ```
-Then explore in GraphiQL at <http://localhost:4000/graphql>. It opens with 13 saved queries as tabs (health, what can execute now, vault history, time travel with `pendingAt`, revoked and stale changes, deliveries, subscribe and unsubscribe), defined in [playground.ts](service/src/graphql/playground.ts) and validated against the schema by a test. If you've already used GraphiQL in this browser, clear the site's storage (or use a private window) to load them. A taste:
+Then explore in GraphiQL at <http://localhost:4000/graphql>. It opens on a **12-step demo walkthrough**, one titled tab per step (`Step1_IsItHealthy` … `Step3_TheCbBTCStory` … `Step7_DeliveryTrail` …), defined in [playground.ts](service/src/graphql/playground.ts). Every query is validated against the schema by a test and checked against the demo data. The page resets GraphiQL's saved tabs whenever the walkthrough changes, so returning visitors get it too. A taste:
 ```graphql
 {
   health { ok indexer { lastBlock lagBlocks chainTime } }

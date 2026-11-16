@@ -93,6 +93,11 @@ describe.skipIf(!TEST_DATABASE_URL)("end to end", () => {
         body: JSON.stringify({ path: `${u.pathname}${u.search}`, secret: r.createSubscription.secret }),
       });
     }
+    // Read back through the API, including the vault filter (an eth_address[] column the driver returns as text).
+    const listed = await gql(`{ subscriptions { url vaults functions } }`);
+    expect(listed.subscriptions.find((s: any) => s.url.endsWith("/slow")).vaults).toEqual([splits.toLowerCase()]);
+    expect(listed.subscriptions.find((s: any) => s.url.endsWith("/ok")).vaults).toBeNull();
+
     await expect(gql(create, { input: { url: "ftp://x" } })).rejects.toThrow(/url rejected/);
     await expect(gql(create, { input: { url: `${receiversUrl}/ok`, functions: ["setName"] } })).rejects.toThrow(/unknown timelocked function/);
   });

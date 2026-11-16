@@ -1,11 +1,18 @@
 /**
- * Saved queries preloaded into GraphiQL (http://localhost:4000/graphql) as tabs.
- * GraphiQL uses these only when the browser has no saved tab state for this page; to get them back after
- * editing tabs, clear the site's storage or open a private window.
+ * The GraphiQL demo (http://localhost:4000/graphql): a numbered walkthrough preloaded as tabs.
+ *
+ * GraphiQL titles each tab with its operation name, hence names like Step3_TheCbBTCStory.
+ * GraphiQL keeps tabs in the browser's localStorage and ignores these defaults once it has saved state, so the page
+ * clears that state whenever PLAYGROUND_VERSION changes (see graphiqlPage). Bump it when you change the tabs.
  * playground.test.ts validates every query against the schema, so they can't silently rot.
  */
+import { renderGraphiQL } from "graphql-yoga";
 
-const STEAKHOUSE_HY_EDITION = "0xbeeff2490feffa212fac2f6553682c219e6a8845";
+export const PLAYGROUND_VERSION = "2026-11-16.2";
+
+const CBBTC_TX = "0x110954fd52ce28366eb2a536f006420d671a2ec6879c5c0cdc1649daae38f7b9";
+const SYRUP_REVOKE_TX = "0xfa137b501b824da815e994fd94fe1f1f69524464fd4e61746be5c6ee78b3839a";
+const STEAKHOUSE_HY_EDITION = "0xbeeff2490feffa212faC2f6553682c219e6a8845".toLowerCase();
 
 export interface PlaygroundTab {
   query: string;
@@ -19,98 +26,161 @@ const tab = (query: string, variables?: Record<string, unknown>): PlaygroundTab 
 
 export const playgroundTabs: PlaygroundTab[] = [
   tab(`
-# Is the service healthy, and how far behind the chain is the indexer?
-# lagBlocks includes the CONFIRMATIONS depth (10 by default). chainTime is the service's notion of "now".
-query Health {
+# ─────────────────────────────────────────────────────────────────────────────
+#  Vault V2 Timelock Watcher: demo walkthrough (one tab per step, run with ▶)
+# ─────────────────────────────────────────────────────────────────────────────
+# Curators must announce risk-raising changes (cap increases, new adapters, fee
+# changes) and wait out a timelock before anyone can execute them. This service
+# watches Base vaults onchain and pushes signed webhooks when a change is
+# SUBMITTED, EXECUTED or REVOKED.
+#
+#  Step 1  is it healthy, and how far behind the chain?       (this tab)
+#  Step 2  what could execute right now?
+#  Step 3  the cbBTC story: a $500M cap increase, 3 days' notice
+#  Step 4  the curator who backed down (revoked after 5 weeks)
+#  Step 5  time travel: what was pending on any date
+#  Step 6  who is subscribed, and how their deliveries are going
+#  Step 7  the delivery trail of one alert (retries, failures)
+#  Step 8  alerts that gave up after 8 attempts
+#  Step 9  junk in the queue: "pending" changes that can never execute
+#  Step 10 one vault's full curator history
+#  Step 11 subscribe your own webhook / Step 12 unsubscribe
+#
+# Demo data: the offline stack replays real Base history (Oct 2025 → Nov 2026).
+# Move the mock chain from a terminal, then re-run Step 2 or Step 5:
+#   curl -XPOST 'localhost:8545/control/advance-to?time=2026-11-10T00:00:00Z'
+#   curl -XPOST 'localhost:8545/control/play?speed=1d/2s'
+# (with the demo's alternate ports, 8545 may be 18546)
+# lagBlocks includes the confirmation depth (10). chainTime = the service's "now".
+query Step1_IsItHealthy {
   health {
     ok
-    database { ok error }
-    rpc { ok chainId blockNumber error }
-    indexer { lastBlock headBlock lagBlocks chainTime updatedAt }
+    database { ok }
+    rpc { ok chainId blockNumber }
+    indexer { lastBlock headBlock lagBlocks chainTime }
   }
+  vaults { name pendingCount }
 }`),
 
   tab(`
-# What can happen right now? Pending changes past their timelock that aren't old junk.
-# "executable" = anyone can execute it now (chain time >= executableAt).
-query ActionableNow {
+# What could execute right now? Pending, past its timelock, and not stale junk.
+# "executable" uses chain time, exactly like the contract (block.timestamp).
+query Step2_WhatCanExecuteNow {
   timelockChanges(status: PENDING, stale: false) {
     vault { name }
     summary
     submittedAt
     executableAt
     executable
-    submitTx
-  }
-}`),
-
-  tab(`
-# Every watched vault, with how many changes are pending.
-query Vaults {
-  vaults {
-    name
-    address
-    assetSymbol
-    startBlock
-    pendingCount
   }
 }`),
 
   tab(
     `
-# Full curator history of one vault, newest first.
-query VaultHistory($vault: String!) {
-  vault(address: $vault) {
-    name
-    pendingCount
-    changes(limit: 50) {
-      status
-      summary
-      submittedAt
-      executableAt
-      resolvedAt
-      submitTx
-      resolvedTx
-    }
+# Steakhouse High Yield USDC Edition raised its cbBTC caps to 500M USDC.
+# Curators bundle changes: one tx = absolute cap on the collateral AND the market.
+# Subscribers got 3 days' notice (submittedAt → executableAt) before it executed.
+query Step3_TheCbBTCStory($tx: String!) {
+  timelockChanges(txHash: $tx) {
+    vault { name }
+    summary
+    status
+    submittedAt
+    executableAt
+    resolvedAt
+    deliveries { eventType status attempts subscription { url } }
   }
 }`,
-    { vault: STEAKHOUSE_HY_EDITION },
+    { tx: CBBTC_TX },
   ),
 
   tab(
     `
-# Time travel: what was pending at a given moment?
-# 2026-09-15: the syrupUSDC market caps on Steakhouse High Yield USDC Edition were pending (later revoked).
-query PendingAt($at: String!) {
+# A 100M USDC cap on a syrupUSDC market (91.5% LLTV) was submitted on 2026-08-23
+# and revoked five weeks later. Subscribers heard both ends of the story.
+query Step4_CuratorBackedDown($tx: String!) {
+  timelockChanges(txHash: $tx) {
+    vault { name }
+    summary
+    status
+    submittedAt
+    executableAt
+    resolvedAt
+    revokedBy
+  }
+  allRevoked: timelockChanges(status: REVOKED) { vault { name } summary resolvedAt }
+}`,
+    { tx: SYRUP_REVOKE_TX },
+  ),
+
+  tab(
+    `
+# Time travel: what was pending at any moment? Try other dates.
+# 2026-09-15: the syrupUSDC caps from Step 4 were still pending.
+query Step5_PendingOnADate($at: String!) {
   timelockChanges(pendingAt: $at) {
     vault { name }
     summary
     submittedAt
     executableAt
     status
-    resolvedAt
   }
 }`,
     { at: "2026-09-15T00:00:00Z" },
   ),
 
   tab(`
-# Changes a curator submitted and then withdrew.
-query Revoked {
-  timelockChanges(status: REVOKED) {
-    vault { name }
+# Who is subscribed, and how are their deliveries going?
+# In the demo: /ok always answers 200, /flaky fails twice then succeeds,
+# /down always fails, /slow answers after the 5s timeout (Splits vault only).
+query Step6_Subscribers {
+  subscriptions {
+    url
+    vaults
+    functions
+    active
+    deliveryCounts { delivered pending failed }
+  }
+}`),
+
+  tab(
+    `
+# Every webhook one change caused: per subscriber, how many attempts and why.
+# /flaky shows 3 attempts then DELIVERED; /down shows 8 attempts then FAILED.
+query Step7_DeliveryTrail($tx: String!) {
+  timelockChanges(txHash: $tx, functionName: "increaseAbsoluteCap") {
     summary
-    submittedAt
-    resolvedAt
-    revokedBy
-    resolvedTx
+    deliveries {
+      eventType
+      status
+      attempts
+      lastStatusCode
+      lastError
+      deliveredAt
+      subscription { url }
+    }
+  }
+}`,
+    { tx: CBBTC_TX },
+  ),
+
+  tab(`
+# Alerts that gave up after the last retry (30s, 2m, 10m, 1h, 3h, 6h, 12h).
+query Step8_FailedDeliveries {
+  deliveries(status: FAILED, limit: 10) {
+    eventType
+    attempts
+    lastStatusCode
+    lastError
+    subscription { url }
   }
 }`),
 
   tab(`
-# Stale "pending" changes: past executableAt by more than STALE_AFTER_DAYS.
-# Many aren't timelocked functions at all (e.g. setName): submit() accepts any calldata, so they can never execute.
-query StaleJunk {
+# "Pending" isn't always meaningful: submit() accepts ANY calldata, and real vaults
+# have setName/setSymbol submissions (not timelocked functions) pending for a year.
+# The service keeps them, flags them, and the stale filter hides them from Step 2.
+query Step9_JunkInTheQueue {
   timelockChanges(stale: true) {
     vault { name }
     functionName
@@ -122,74 +192,32 @@ query StaleJunk {
 
   tab(
     `
-# Only one kind of change, e.g. absolute cap increases, with the decoded risk id and amount.
-query ByFunction($fn: String!) {
-  timelockChanges(functionName: $fn, limit: 25) {
-    vault { name }
-    status
-    summary
-    decoded
-    executableAt
-  }
-}`,
-    { fn: "increaseAbsoluteCap" },
-  ),
-
-  tab(`
-# One change and every webhook delivery it caused (attempts, status codes, errors).
-query ChangeWithDeliveries {
-  timelockChanges(status: REVOKED, limit: 1) {
-    id
-    vault { name }
-    summary
-    deliveries {
-      eventType
+# One vault's full curator history, newest first, with decoded risk ids.
+query Step10_VaultHistory($vault: String!) {
+  vault(address: $vault) {
+    name
+    pendingCount
+    changes(limit: 40) {
       status
-      attempts
-      lastStatusCode
-      lastError
-      deliveredAt
-      subscriptionId
+      summary
+      submittedAt
+      executableAt
+      resolvedAt
     }
   }
-}`),
-
-  tab(`
-# Subscribers and how their deliveries are going.
-query Subscriptions {
-  subscriptions {
-    id
-    url
-    vaults
-    functions
-    startBlock
-    active
-    deliveryCounts { pending delivered failed }
-  }
-}`),
-
-  tab(`
-# Deliveries that gave up after the last retry: what went wrong?
-query FailedDeliveries {
-  deliveries(status: FAILED, limit: 20) {
-    subscriptionId
-    eventType
-    attempts
-    lastStatusCode
-    lastError
-    nextAttemptAt
-  }
-}`),
+}`,
+    { vault: STEAKHOUSE_HY_EDITION },
+  ),
 
   tab(
     `
-# Subscribe a webhook. The secret is returned ONCE: the receiver uses it to verify X-Signature.
-# In the demo, mock-receivers accepts /ok, /flaky, /down and /slow (register the secret with
-# POST localhost:9000/control/register to see signatures verified). Alerts start from the next indexed block.
-mutation Subscribe($input: CreateSubscriptionInput!) {
+# Subscribe a webhook. The signing secret is returned ONCE (stored encrypted).
+# Filters: vaults and timelocked function names. Alerts start from the next block,
+# so run this, then move the mock chain (see Step 1) to watch deliveries arrive.
+mutation Step11_Subscribe($input: CreateSubscriptionInput!) {
   createSubscription(input: $input) {
     secret
-    subscription { id url vaults functions startBlock }
+    subscription { id url functions startBlock }
   }
 }`,
     {
@@ -202,10 +230,25 @@ mutation Subscribe($input: CreateSubscriptionInput!) {
 
   tab(
     `
-# Stop a subscription (its queued deliveries are marked failed rather than sent).
-mutation Unsubscribe($id: ID!) {
-  deactivateSubscription(id: $id) { id active }
+# Stop a subscription. Paste an id from Step 6 or Step 11.
+mutation Step12_Unsubscribe($id: ID!) {
+  deactivateSubscription(id: $id) { id url active }
 }`,
     { id: "paste-a-subscription-id" },
   ),
 ];
+
+/**
+ * The GraphiQL page: Yoga's renderer plus a tiny script that clears GraphiQL's saved tabs once per
+ * PLAYGROUND_VERSION, so every visitor gets the walkthrough tabs (instead of whatever their browser saved earlier)
+ * and later edits are kept as usual. It also drops a stale ?query= from the URL, which GraphiQL would otherwise
+ * open as an extra "<untitled>" tab.
+ */
+export function graphiqlPage(options: Parameters<typeof renderGraphiQL>[0]): string {
+  const reset = `<script>(function(){try{var k="watcher:playground-version",v=${JSON.stringify(PLAYGROUND_VERSION)};
+if(localStorage.getItem(k)!==v){Object.keys(localStorage).forEach(function(x){if(x.indexOf("graphiql:")===0)localStorage.removeItem(x)});
+localStorage.setItem(k,v);var u=new URL(location.href);if(u.searchParams.has("query")){u.searchParams.delete("query");history.replaceState({},"",u)}}}catch(e){}})();</script>`;
+  const html = renderGraphiQL(options);
+  // Must run before GraphiQL reads storage: put it at the very start of <head>.
+  return html.includes("<head>") ? html.replace("<head>", `<head>${reset}`) : reset + html;
+}

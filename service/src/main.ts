@@ -13,7 +13,7 @@ import { createLogger } from "./logger.js";
 import { createPool } from "./db/pool.js";
 import { createRpcClient } from "./rpc/client.js";
 import { schema, type GraphQLContext } from "./graphql/schema.js";
-import { playgroundTabs } from "./graphql/playground.js";
+import { graphiqlPage, playgroundTabs } from "./graphql/playground.js";
 import { ChainReader } from "./indexer/chain-reader.js";
 import { Indexer } from "./indexer/indexer.js";
 import { acquireIndexerLock } from "./indexer/lock.js";
@@ -77,8 +77,9 @@ function startApi() {
   const yoga = createYoga({
     schema,
     context: () => context,
-    // Saved example queries as tabs (src/graphql/playground.ts).
+    // Demo walkthrough as GraphiQL tabs (src/graphql/playground.ts).
     graphiql: { title: "Vault V2 Timelock Watcher", defaultTabs: playgroundTabs },
+    renderGraphiQL: graphiqlPage,
   });
   server = createServer(yoga);
   server.listen(config.PORT, () => log.info(`GraphQL API listening on http://localhost:${config.PORT}${yoga.graphqlEndpoint}`));

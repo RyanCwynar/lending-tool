@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createYoga } from "graphql-yoga";
 import { schema, type GraphQLContext } from "./schema.js";
-import { playgroundTabs } from "./playground.js";
+import { graphiqlPage, playgroundTabs, PLAYGROUND_VERSION } from "./playground.js";
 import { testConfig } from "../test/harness.js";
 
 /**
@@ -31,6 +31,23 @@ describe("GraphiQL saved queries", () => {
       expect(validationErrors).toEqual([]);
     },
   );
+
+  it("every tab gets a distinct title (GraphiQL's own title rule, else it shows <untitled>)", () => {
+    // Copied from GraphiQL: the first non-comment line with `query|mutation|subscription <Name>`.
+    const title = (q: string) => /^(?!#).*(query|subscription|mutation)\s+([a-zA-Z0-9_]+)/m.exec(q)?.[2] ?? null;
+    const titles = playgroundTabs.map((t) => title(t.query));
+    expect(titles.every((t) => t !== null)).toBe(true);
+    expect(new Set(titles).size).toBe(titles.length);
+    expect(titles[0]).toBe("Step1_IsItHealthy");
+  });
+
+  it("the page resets saved GraphiQL tabs before GraphiQL loads", () => {
+    const html = graphiqlPage({ title: "t", defaultTabs: playgroundTabs });
+    const reset = html.indexOf("watcher:playground-version");
+    expect(reset).toBeGreaterThan(-1);
+    expect(reset).toBeLessThan(html.indexOf("yoga-graphiql")); // runs before the GraphiQL bundle
+    expect(html).toContain(PLAYGROUND_VERSION);
+  });
 
   it("does not expose a GraphQL subscription root (webhook subscribers are a separate type)", () => {
     expect(schema.getSubscriptionType()).toBeFalsy();

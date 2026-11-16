@@ -38,11 +38,13 @@ const typeDefs = /* GraphQL */ `
     Timelocked changes, newest first.
     pendingAt: changes that were pending at that moment (ISO time), e.g. "what was pending on 2026-11-11?".
     stale: pending changes past executableAt by more than STALE_AFTER_DAYS (chain time); often junk that can never execute.
+    txHash: every change submitted or resolved in that transaction (curators bundle several changes in one tx).
     """
     timelockChanges(
       vault: String
       status: ChangeStatus
       functionName: String
+      txHash: String
       stale: Boolean
       executableBefore: String
       pendingAt: String
@@ -150,6 +152,8 @@ const typeDefs = /* GraphQL */ `
   type Delivery {
     id: ID!
     subscriptionId: ID!
+    "Where this alert was (or is being) sent."
+    subscription: WebhookSubscription!
     changeId: ID!
     eventType: String!
     status: DeliveryStatus!
@@ -164,6 +168,15 @@ const typeDefs = /* GraphQL */ `
 `;
 
 const isoOrNull = (d: Date | null) => (d ? d.toISOString() : null);
+
+/** Postgres array of simple tokens (addresses) → string[]; passes real arrays and null through. */
+export function pgArray(value: unknown): string[] | null {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return value.map(String);
+  const s = String(value).trim();
+  if (s === "{}") return [];
+  return s.replace(/^\{|\}$/g, "").split(",").map((x) => x.replace(/^"|"$/g, "").trim());
+}
 
 async function checkDatabase(pool: pg.Pool) {
   try {
@@ -245,6 +258,10 @@ export const schema = createSchema<GraphQLContext>({
         if (args.vault) add("c.vault = ?", String(args.vault).toLowerCase());
         if (args.status) add("c.status = ?", args.status);
         if (args.functionName) add("c.function_name = ?", args.functionName);
+        if (args.txHash) {
+          params.push(String(args.txHash).toLowerCase());
+          where.push(`(c.submitted_tx = $${params.length} OR c.resolved_tx = $${params.length})`);
+        }
         if (args.executableBefore) add("c.executable_at < ?", parseTime(String(args.executableBefore), "executableBefore"));
         if (args.pendingAt) {
           const t = parseTime(String(args.pendingAt), "pendingAt");
@@ -332,6 +349,9 @@ export const schema = createSchema<GraphQLContext>({
     },
 
     WebhookSubscription: {
+      // vaults is an eth_address[] (a domain array); node-postgres has no parser for it and returns the raw
+      // array literal "{0xabc,0xdef}", so normalise it here, where every read of a subscription passes through.
+      vaults: (s: SubscriptionRow) => pgArray(s.vaults as unknown),
       startBlock: (s: SubscriptionRow) => s.start_block,
       createdAt: (s: SubscriptionRow) => s.created_at.toISOString(),
       deliveryCounts: async (s: SubscriptionRow, _a, ctx) => {
@@ -348,6 +368,8 @@ export const schema = createSchema<GraphQLContext>({
 
     Delivery: {
       subscriptionId: (d) => d.subscription_id,
+      subscription: async (d, _a, ctx) =>
+        (await ctx.pool.query("SELECT * FROM subscription WHERE id = $1", [d.subscription_id])).rows[0],
       changeId: (d) => d.change_id,
       eventType: (d) => d.event_type,
       nextAttemptAt: (d) => d.next_attempt_at.toISOString(),
