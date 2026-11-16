@@ -37,8 +37,11 @@ export class ReceiverState {
   received = new Map<string, Received[]>();
   attempts = new Map<string, number>(); // `${path}|${deliveryId}` -> attempts seen
   accepted = new Map<string, Set<string>>(); // path -> delivery ids answered 2xx
+  /** Bumped on reset; a request that arrived before a reset is not recorded after it (e.g. a /slow one still waiting). */
+  epoch = 0;
 
   reset() {
+    this.epoch++;
     this.secrets.clear();
     this.received.clear();
     this.attempts.clear();
@@ -57,7 +60,10 @@ export class ReceiverState {
             requests: list.length,
             accepted: this.accepted.get(p)?.size ?? 0,
             duplicatesAfterAccept: list.filter((r) => r.duplicate).length,
-            badSignatures: list.filter((r) => r.signature !== "ok").length,
+            // Invalid signatures: wrong secret, stale timestamp or malformed header (would indicate forgery or a bug).
+            badSignatures: list.filter((r) => r.signature === "mismatch" || r.signature === "stale" || r.signature === "malformed").length,
+            // Requests for an endpoint with no registered secret (e.g. a previous run's retries arriving after a reset).
+            unregistered: list.filter((r) => r.signature === "no-secret").length,
             acceptedByType: byType,
           },
         ];
@@ -106,6 +112,7 @@ export function createMockReceivers(
 
     const path = url.pathname as Endpoint;
     if (!ENDPOINTS.includes(path) || req.method !== "POST") return send(res, 404, { error: "unknown endpoint" });
+    const epoch = state.epoch;
 
     const deliveryId = String(req.headers[DELIVERY_ID_HEADER] ?? "");
     // Secrets are registered per full URL path (incl. query), so two subscriptions can share an endpoint
@@ -131,6 +138,11 @@ export function createMockReceivers(
     else status = 200;
 
     if (path === "/slow") await new Promise((r) => setTimeout(r, slowMs));
+    if (epoch !== state.epoch) {
+      // State was reset while this request was in progress; it belongs to the previous run.
+      if (!res.destroyed) send(res, status, { ok: status === 200 });
+      return;
+    }
 
     const acceptedSet = state.accepted.get(path) ?? new Set<string>();
     state.accepted.set(path, acceptedSet);

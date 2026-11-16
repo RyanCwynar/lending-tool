@@ -1,3 +1,47 @@
+# Vault V2 timelock watcher.
+#
+# `docker compose up` starts the OFFLINE DEMO: the three service roles plus mock-rpc (recorded Base history,
+# no RPC key needed) and mock-receivers (webhook endpoints). Then run the replay:
+#     docker compose run --rm replay
+#
+# LIVE mode (real Base node; needs a provider that serves historical eth_getLogs, e.g. Alchemy):
+#     RPC_URL=https://base-mainnet.g.alchemy.com/v2/<key> LOG_RANGE=100000 RETRY_SCHEDULE_SCALE=1 \
+#     WEBHOOK_ALLOW_PRIVATE=false SECRET_ENCRYPTION_KEY=$(openssl rand -base64 32) \
+#     docker compose up postgres indexer worker api
+#
+# Every app container runs migrations before starting (the migration runner takes an advisory lock).
+
+# If Docker injects an egress proxy into containers, internal service names must bypass it (harmless otherwise).
+x-no-proxy: &no-proxy
+  NO_PROXY: localhost,127.0.0.1,::1,postgres,mock-rpc,mock-receivers,api
+  no_proxy: localhost,127.0.0.1,::1,postgres,mock-rpc,mock-receivers,api
+
+x-app: &app
+  build: ./service
+  depends_on:
+    postgres:
+      condition: service_healthy
+  restart: unless-stopped
+  environment: &app-env
+    <<: *no-proxy
+    DATABASE_URL: postgres://morpho:morpho@postgres:5432/morpho
+    RPC_URL: ${RPC_URL:-http://mock-rpc:8545}
+    CHAIN_ID: ${CHAIN_ID:-8453}
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    # Demo vaults (address:creationBlock): Steakhouse HY USDC Edition, Gauntlet USDC Frontier,
+    # Gauntlet USDC Prime, Splits Earn USDC. See docs/PLAN.md "Demo vaults".
+    VAULTS: ${VAULTS:-0xbeeff2490FEffa212faC2f6553682C219E6a8845:45427904,0x1deEfABEe758AAbdC29a542B24ca3b75aFD56765:37179468,0x050cE30b927Da55177A4914EC73480238BAD56f0:37179342,0x189A1a23F46321a196646314E6a078a404513C8F:50183714}
+    CONFIRMATIONS: ${CONFIRMATIONS:-10}
+    POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-1000}
+    LOG_RANGE: ${LOG_RANGE:-500000}
+    # DEV-ONLY default key so the demo runs out of the box. Always pass your own outside the demo.
+    SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-k15M1EGK+LeaZnF7vUHLyQPRdLKV0mM+zCh4S+aKz1o=}
+    # The demo's webhook receivers live on the private Docker network.
+    WEBHOOK_ALLOW_PRIVATE: ${WEBHOOK_ALLOW_PRIVATE:-true}
+    # Compress the 30s…12h retry schedule so the demo shows /down giving up within ~80s. 1 = real schedule.
+    RETRY_SCHEDULE_SCALE: ${RETRY_SCHEDULE_SCALE:-0.001}
+    DELIVERY_TIMEOUT_MS: ${DELIVERY_TIMEOUT_MS:-5000}
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -6,7 +50,7 @@ services:
       POSTGRES_PASSWORD: morpho
       POSTGRES_DB: morpho
     ports:
-      - "5432:5432"
+      - "${PG_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -15,20 +59,67 @@ services:
       timeout: 3s
       retries: 20
 
-  app:
-    build: ./service
-    depends_on:
-      postgres:
-        condition: service_healthy
+  # Exactly one indexer (enforced by a Postgres advisory lock).
+  indexer:
+    <<: *app
     environment:
-      DATABASE_URL: postgres://morpho:morpho@postgres:5432/morpho
-      RPC_URL: ${RPC_URL:-https://mainnet.base.org}
-      CHAIN_ID: ${CHAIN_ID:-8453}
+      <<: *app-env
+      ROLE: indexer
+
+  # Any number of workers: `docker compose up --scale worker=3`.
+  worker:
+    <<: *app
+    environment:
+      <<: *app-env
+      ROLE: worker
+
+  api:
+    <<: *app
+    environment:
+      <<: *app-env
+      ROLE: api
       PORT: 4000
-      LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
-      - "4000:4000"
+      - "${API_PORT:-4000}:4000"
+
+  # Demo: recorded Base history served as a JSON-RPC node, with a controllable clock (see service/src/harness).
+  mock-rpc:
+    build: ./service
+    command: ["node", "dist/harness/mock-rpc.js"]
+    environment:
+      MOCK_RPC_PORT: 8545
+      FIXTURE_PATH: fixtures/base-timelocks.json
+    ports:
+      - "${MOCK_RPC_PORT:-8545}:8545"
     restart: unless-stopped
+
+  # Demo: webhook endpoints that verify signatures (/ok /flaky /down /slow).
+  mock-receivers:
+    build: ./service
+    command: ["node", "dist/harness/mock-receivers.js"]
+    environment:
+      MOCK_RECEIVERS_PORT: 9000
+      SLOW_MS: 10000
+    ports:
+      - "${MOCK_RECEIVERS_PORT:-9000}:9000"
+    restart: unless-stopped
+
+  # Demo driver: `docker compose run --rm replay`.
+  replay:
+    build: ./service
+    profiles: ["tools"]
+    command: ["node", "dist/harness/replay.js"]
+    depends_on: [api, mock-rpc, mock-receivers]
+    environment:
+      <<: *no-proxy
+      API_URL: http://api:4000/graphql
+      MOCK_RPC_URL: http://mock-rpc:8545
+      RECEIVERS_URL: http://mock-receivers:9000
+      RECEIVERS_URL_FOR_SERVICE: http://mock-receivers:9000
+      DATABASE_URL: postgres://morpho:morpho@postgres:5432/morpho
+      SPEED: ${SPEED:-2w/1s}
+      TIMELINE: ${TIMELINE:-notable}
+      SETTLE_TIMEOUT_S: ${SETTLE_TIMEOUT_S:-300}
 
 volumes:
   pgdata:

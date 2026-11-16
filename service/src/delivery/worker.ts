@@ -30,6 +30,10 @@ export interface WorkerOptions {
   concurrency: number;
   allowPrivate: boolean;
   pollIntervalMs?: number;
+  /** Multiplies RETRY_SCHEDULE_SECONDS (1 = real schedule; the replay demo compresses it). */
+  retryScale?: number;
+  /** Max deliveries in flight per subscription, across all workers (fairness: one bad endpoint can't hog slots). */
+  perSubscription?: number;
   /** Wall clock, injectable so tests can move time. */
   now?: () => Date;
 }
@@ -63,12 +67,30 @@ export class DeliveryWorker {
   /** Claim up to `limit` due deliveries: bump attempts and take a lease, in one short statement. */
   async claim(limit: number): Promise<ClaimedDelivery[]> {
     const now = this.now();
+    // Step 1: pick candidates fairly. At most `perSubscription` deliveries per subscription may be in flight
+    // (leased) at once, counting what other workers already hold, so one slow or dead endpoint can't take every
+    // slot. Within a subscription, oldest first.
+    const candidates = await this.pool.query<{ id: string }>(
+      `WITH inflight AS (
+         SELECT subscription_id, count(*) AS n FROM delivery
+          WHERE status = 'PENDING' AND locked_until >= $1 GROUP BY subscription_id
+       ), ranked AS (
+         SELECT d.id, d.next_attempt_at, d.subscription_id,
+                row_number() OVER (PARTITION BY d.subscription_id ORDER BY d.next_attempt_at, d.id) AS rn
+           FROM delivery d
+          WHERE d.status = 'PENDING' AND d.next_attempt_at <= $1 AND (d.locked_until IS NULL OR d.locked_until < $1)
+       )
+       SELECT r.id FROM ranked r LEFT JOIN inflight i USING (subscription_id)
+        WHERE r.rn + coalesce(i.n, 0) <= $3
+        ORDER BY r.next_attempt_at LIMIT $2`,
+      [now, limit, this.opts.perSubscription ?? 2],
+    );
+    if (candidates.rowCount === 0) return [];
+    // Step 2: lease them. SKIP LOCKED + the lease re-check mean two workers can never take the same row.
     const r = await this.pool.query<ClaimedDelivery>(
       `WITH due AS (
          SELECT id FROM delivery
-          WHERE status = 'PENDING' AND next_attempt_at <= $1 AND (locked_until IS NULL OR locked_until < $1)
-          ORDER BY next_attempt_at
-          LIMIT $2
+          WHERE id = ANY($2::uuid[]) AND status = 'PENDING' AND (locked_until IS NULL OR locked_until < $1)
           FOR UPDATE SKIP LOCKED
        )
        UPDATE delivery d
@@ -77,7 +99,7 @@ export class DeliveryWorker {
         WHERE d.id = due.id AND s.id = d.subscription_id
        RETURNING d.id, d.subscription_id, d.event_type, d.payload, d.attempts,
                  s.url, s.active, s.secret_ciphertext, s.secret_iv, s.secret_tag`,
-      [now, limit, LEASE_SECONDS],
+      [now, candidates.rows.map((c) => c.id), LEASE_SECONDS],
     );
     return r.rows;
   }
@@ -130,7 +152,7 @@ export class DeliveryWorker {
       return;
     }
     const giveUp = permanent || d.attempts >= this.opts.maxAttempts;
-    const next = new Date(now.getTime() + retryDelaySeconds(d.attempts) * 1000);
+    const next = new Date(now.getTime() + retryDelaySeconds(d.attempts) * 1000 * (this.opts.retryScale ?? 1));
     await this.pool.query(
       `UPDATE delivery SET status = $2, next_attempt_at = $3, last_status_code = $4, last_error = $5,
               locked_until = NULL WHERE id = $1`,
@@ -169,15 +191,33 @@ export class DeliveryWorker {
     });
   }
 
+  /**
+   * Continuous pool: keep up to `concurrency` sends in flight and claim new work as soon as a slot frees.
+   * (An earlier version awaited whole batches, so one slow receiver stalled the rest of its batch: the replay
+   * demo exposed it.)
+   */
   async run(signal: AbortSignal): Promise<void> {
+    const inflight = new Set<Promise<void>>();
+    const poll = this.opts.pollIntervalMs ?? 1000;
     while (!signal.aborted) {
       try {
-        const n = await this.runOnce();
-        if (n === 0) await sleep(this.opts.pollIntervalMs ?? 1000, signal);
+        const free = this.opts.concurrency - inflight.size;
+        const batch = free > 0 ? await this.claim(free) : [];
+        for (const d of batch) {
+          const p: Promise<void> = this.deliver(d)
+            .catch((err) => this.log.error({ err, delivery: d.id }, "delivery crashed; lease will expire and it will be retried"))
+            .finally(() => inflight.delete(p));
+          inflight.add(p);
+        }
+        if (batch.length === 0 || inflight.size >= this.opts.concurrency) {
+          // Wake when a send finishes (a slot frees) or after the poll interval (new work may be due).
+          await Promise.race([sleep(poll, signal), ...inflight]);
+        }
       } catch (err) {
-        this.log.error({ err }, "delivery worker batch failed");
+        this.log.error({ err }, "delivery worker claim failed");
         await sleep(5000, signal);
       }
     }
+    await Promise.allSettled(inflight);
   }
 }

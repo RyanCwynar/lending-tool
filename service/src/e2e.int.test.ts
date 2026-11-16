@@ -60,7 +60,7 @@ describe.skipIf(!TEST_DATABASE_URL)("end to end", () => {
     await indexer.init();
     worker = new DeliveryWorker(
       db.pool,
-      { encryptionKey: key, maxAttempts: 8, timeoutMs: 500, concurrency: 64, allowPrivate: true, now: () => new Date(clock) },
+      { encryptionKey: key, maxAttempts: 8, timeoutMs: 500, concurrency: 64, perSubscription: 64, allowPrivate: true, now: () => new Date(clock) },
       silentLog,
     );
   }, 60_000);

@@ -56,6 +56,9 @@ function startWorker() {
       timeoutMs: config.DELIVERY_TIMEOUT_MS,
       concurrency: config.WORKER_CONCURRENCY,
       allowPrivate: config.WEBHOOK_ALLOW_PRIVATE,
+      retryScale: config.RETRY_SCHEDULE_SCALE,
+      perSubscription: config.WORKER_PER_SUBSCRIPTION,
+      pollIntervalMs: Math.min(1000, config.POLL_INTERVAL_MS),
     },
     log.child({ component: "worker" }),
   );

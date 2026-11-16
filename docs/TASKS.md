@@ -18,8 +18,8 @@ The 5-hour figure in the brief is a guide to the size of work, not a hard limit;
 | 9 | **Outbox matching** inside the indexer transaction | Deliveries only for matching filters and only after `start_block` | done (e2e: 648 per all-vault subscriber, filters exact, no duplicates on re-index) |
 | 10 | **Delivery worker**: claim with `SKIP LOCKED`, HMAC sign, POST, backoff, max attempts | Retry schedule tested with an injected clock; signature round-trip test | done (e2e: flaky delivered on attempt 3, down FAILED after 8, slow times out without blocking) |
 | 11 | **Mock receivers** `/ok` `/flaky` `/down` `/slow`, `POST /control/register` (path + secret), `GET /received` | Receivers verify signatures and count duplicate delivery ids | done |
-| 12 | **Replay script** with assertions | One command: reset → subscribe (register secrets) → play → timeline + pass/fail | todo |
-| 13 | **Roles + docker-compose**: `indexer`, `worker`, `api`, `mock-rpc`, `mock-receivers`, `postgres` | `docker compose up` + replay works with no RPC key | todo |
+| 12 | **Replay script** with assertions | One command: reset → subscribe (register secrets) → play → timeline + pass/fail | done (all 6 checks pass against the compose stack) |
+| 13 | **Roles + docker-compose**: `indexer`, `worker`, `api`, `mock-rpc`, `mock-receivers`, `postgres` | `docker compose up` + replay works with no RPC key | done (second indexer refused by the lock; acts as hot standby) |
 | 14 | **README** (architecture + run) and **BusinessCase.md** (1 page) | Brief deliverables complete | todo |
 
 Cut list, if needed, in this order: mock-rpc fault injection → `/slow` receiver → `stale` filter → role split (fall back to `ROLE=all`).

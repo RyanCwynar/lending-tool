@@ -46,6 +46,10 @@ const EnvSchema = z.object({
   DELIVERY_MAX_ATTEMPTS: z.coerce.number().int().min(1).default(8),
   DELIVERY_TIMEOUT_MS: z.coerce.number().int().min(100).default(5000),
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).default(8),
+  /** Max deliveries in flight per subscription across all workers, so one slow endpoint can't take every slot. */
+  WORKER_PER_SUBSCRIPTION: z.coerce.number().int().min(1).default(2),
+  /** Multiplies the retry schedule (30s … 12h). 1 in production; the replay demo uses a small value. */
+  RETRY_SCHEDULE_SCALE: z.coerce.number().positive().max(1).default(1),
   /** Base64 of 32 random bytes. Encrypts webhook signing secrets at rest. Needed by the api and worker roles. */
   SECRET_ENCRYPTION_KEY: z
     .string()
