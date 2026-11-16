@@ -4,6 +4,13 @@ import { GraphQLScalarType, Kind } from "graphql";
  * Onchain integers (uint256 amounts, block numbers) don't fit in a GraphQL Int (32-bit) or Float (precision loss).
  * Serialize as decimal strings and parse back into bigint.
  */
+/** Arbitrary JSON (decoded arguments, webhook payloads). Output only. */
+export const JSONScalar = new GraphQLScalarType({
+  name: "JSON",
+  description: "Arbitrary JSON value.",
+  serialize: (value) => value,
+});
+
 export const BigIntScalar = new GraphQLScalarType<bigint, string>({
   name: "BigInt",
   description: "Arbitrary-precision integer, serialized as a base-10 string.",

@@ -1,0 +1,20 @@
+# Business case: Vault V2 Timelock Watcher
+
+## What we built
+A backend service that watches Morpho Vault V2 vaults on Base directly onchain and **pushes signed webhook alerts** when a curator submits, executes or revokes a timelocked change. Each alert is decoded into plain language: *"Increase absolute cap on collateral cbBTC to 500,000,000 USDC, executable 2026-11-12 07:44."* Subscribers filter by vault and function. Delivery is at-least-once with retries, and alerts are HMAC-signed. A GraphQL API shows what is pending, what can execute now, what was pending at any past moment, and how each delivery went. A replay harness runs 13 months of real Base history through the unmodified service in about two minutes.
+
+## Why it matters to Morpho
+- **It makes V2's non-custodial guarantee work in practice.** Vault V2's answer to "what if the curator turns risky?" is the timelock: changes that raise risk are announced days ahead, so depositors can leave first. That works only if someone is watching. Today, noticing means polling the Morpho API, opening the Curator App, or reading raw events. The protection is there, but nothing tells depositors when it applies.
+- **The people who need it are systems, not individuals.** Coinbase-style integrators, fintechs, treasuries and custodians route large deposits into vaults. Their risk engines need a machine signal ("vault X's cbBTC exposure can rise to $500M on Thursday") to pause deposits, alert a risk desk or rebalance. Making that easy lowers the integration cost of V2 for exactly the users who bring TVL.
+- **It's real, not hypothetical.** Across the 12 largest Base V2 vaults we found 808 timelocked changes since October 2025: cap increases with 3–7 days' notice, a 100M syrupUSDC market cap revoked after 5 weeks pending, "unlimited" adapter caps submitted then withdrawn, and vaults with zero timelocks where notice is impossible. Changes typically execute hours to days after becoming executable.
+- **It's independent and simple to adopt.** It reads the chain itself (no dependency on Morpho's indexer), it's open source, and a webhook is the lowest-friction integration there is. Commercial monitors (e.g. Hypernative) exist; this is the open building block, and it could become a feature of Morpho's own platform.
+
+## Scope choices
+We deliberately built a narrow event pipeline and built it carefully: an outbox pattern so alerts are never lost or duplicated, reorg handling, a singleton indexer, SSRF-safe and fair delivery, and secrets encrypted rather than hashed (because they sign). We rejected a liquidation monitor, a read-only cap dashboard and vault rankings because the Morpho API already covers them ([PLAN.md](docs/PLAN.md#considered-and-rejected-as-the-main-build)).
+
+## With more time
+1. **State-based alerts on the same pipeline.** *Relative-cap breaches*: relative caps are only checked on allocate, so withdrawals can push a vault over its stated limit with no event, and this tends to happen in stress, when it matters most. Also *booked-vs-live allocation drift* and *"executable within 24h"* reminders. These need periodic state sweeps and alert-once state per breach.
+2. **Policy subscriptions:** "alert me only if a pending change would break *my* policy" (e.g. a cbBTC cap above $50M, or any timelock under 3 days). This is the trigger an integrator's automated exit needs.
+3. **Coverage:** every V2 vault via factory discovery, other chains (one cursor per chain), all adapter types.
+4. **Production hardening:** subscriber API keys, secret rotation, a KMS for the encryption key, metrics on lag and delivery latency, a delivery dead-letter view, and more channels (Slack, Telegram, email) behind the same outbox.
+5. **A screener:** the event log already holds each vault's full configuration history; projecting it lets integrators also ask "which vaults satisfy my policy right now?", closing the loop from *exit* to *re-entry*.

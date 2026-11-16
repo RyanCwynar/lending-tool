@@ -18,6 +18,8 @@ COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY migrations ./migrations
+# Recorded Base history for the offline demo (served by mock-rpc).
+COPY fixtures ./fixtures
 USER node
 EXPOSE 4000
 # Migrate, then serve. The migration runner takes an advisory lock, so this is safe with multiple replicas.

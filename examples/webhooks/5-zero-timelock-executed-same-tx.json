@@ -1,0 +1,43 @@
+{
+  "type": "change.executed",
+  "event": {
+    "name": "Accept",
+    "txHash": "0x8b5c176b0cc26fda9bcbd9a6f67c5ad75424f4301c5151ae601d547ca1b22a6b",
+    "blockNumber": 50183748,
+    "blockTimestamp": "2026-08-19T16:27:23.000Z"
+  },
+  "vault": {
+    "name": "Splits Earn USDC",
+    "address": "0x189a1a23f46321a196646314e6a078a404513c8f"
+  },
+  "change": {
+    "id": 1566,
+    "args": {
+      "idData": "0x000000000000000000000000000000000000000000000000000000000000004000000000000000000000000020e7dc9657ea77ef9a1ebfc50e404795183b311500000000000000000000000000000000000000000000000000000000000000047468697300000000000000000000000000000000000000000000000000000000",
+      "newAbsoluteCap": "340282366920938463463374607431768211455"
+    },
+    "status": "EXECUTED",
+    "decoded": {
+      "capId": {
+        "kind": "adapter",
+        "adapter": "0x20E7dc9657EA77EF9a1EBfc50e404795183B3115"
+      },
+      "summary": "Increase absolute cap on adapter 0x20E7…3115 to unlimited",
+      "capLabel": "adapter 0x20E7…3115",
+      "unlimited": true,
+      "targetFunction": null,
+      "newCapFormatted": "unlimited"
+    },
+    "summary": "Increase absolute cap on adapter 0x20E7…3115 to unlimited",
+    "submitTx": "0x8b5c176b0cc26fda9bcbd9a6f67c5ad75424f4301c5151ae601d547ca1b22a6b",
+    "revokedBy": null,
+    "resolvedAt": "2026-08-19T16:27:23.000Z",
+    "resolvedTx": "0x8b5c176b0cc26fda9bcbd9a6f67c5ad75424f4301c5151ae601d547ca1b22a6b",
+    "submittedAt": "2026-08-19T16:27:23.000Z",
+    "executableAt": "2026-08-19T16:27:23.000Z",
+    "functionName": "increaseAbsoluteCap",
+    "isTimelockedFunction": true
+  },
+  "chainId": 8453,
+  "deliveryId": "919e7797-ffa4-4553-aa90-1c3ac33d4a85"
+}
