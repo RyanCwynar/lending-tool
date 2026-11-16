@@ -1,0 +1,48 @@
+{
+  "type": "change.revoked",
+  "event": {
+    "name": "Revoke",
+    "txHash": "0xfa137b501b824da815e994fd94fe1f1f69524464fd4e61746be5c6ee78b3839a",
+    "blockNumber": 51998863,
+    "blockTimestamp": "2026-09-30T16:51:13.000Z"
+  },
+  "vault": {
+    "name": "Steakhouse High Yield USDC Edition",
+    "address": "0xbeeff2490feffa212fac2f6553682c219e6a8845"
+  },
+  "change": {
+    "id": 1583,
+    "args": {
+      "idData": "0x00000000000000000000000000000000000000000000000000000000000000e00000000000000000000000004a70dc70cef79f51cc7f79c08f863b2841311165000000000000000000000000833589fcd6edb6e08f4c7c32d4f71b54bda02913000000000000000000000000660975730059246a68521a3e2fbd4740173100f50000000000000000000000008e5581119b7a6737dd829dc2fc364f498c0da50c00000000000000000000000046415998764c29ab2a25cbea6254146d50d226870000000000000000000000000000000000000000000000000cb2bba6f17b80000000000000000000000000000000000000000000000000000000000000000011746869732f6d61726b6574506172616d73000000000000000000000000000000",
+      "newAbsoluteCap": "100000000000000"
+    },
+    "status": "REVOKED",
+    "decoded": {
+      "capId": {
+        "irm": "0x46415998764C29aB2a25CbeA6254146D50D22687",
+        "kind": "market",
+        "lltv": "915000000000000000",
+        "oracle": "0x8e5581119B7a6737dD829Dc2FC364F498c0da50C",
+        "adapter": "0x4a70DC70CeF79f51Cc7f79C08f863B2841311165",
+        "loanToken": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "collateralToken": "0x660975730059246A68521a3e2FBD4740173100f5"
+      },
+      "summary": "Increase absolute cap on market syrupUSDC/USDC @ 91.5% LLTV to 100,000,000 USDC",
+      "capLabel": "market syrupUSDC/USDC @ 91.5% LLTV",
+      "unlimited": false,
+      "targetFunction": null,
+      "newCapFormatted": "100,000,000 USDC"
+    },
+    "summary": "Increase absolute cap on market syrupUSDC/USDC @ 91.5% LLTV to 100,000,000 USDC",
+    "submitTx": "0xbae5d112157b0113dc87475a6c8fd888e03df9855e46fbf7dfe10cd873ce5409",
+    "revokedBy": "0x827e86072b06674a077f592a531dce4590adecdb",
+    "resolvedAt": "2026-09-30T16:51:13.000Z",
+    "resolvedTx": "0xfa137b501b824da815e994fd94fe1f1f69524464fd4e61746be5c6ee78b3839a",
+    "submittedAt": "2026-08-23T06:55:49.000Z",
+    "executableAt": "2026-08-26T06:55:49.000Z",
+    "functionName": "increaseAbsoluteCap",
+    "isTimelockedFunction": true
+  },
+  "chainId": 8453,
+  "deliveryId": "3c235e44-e583-4672-9ff8-f7cda515afb3"
+}

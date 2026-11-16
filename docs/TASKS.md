@@ -7,7 +7,7 @@ The 5-hour figure in the brief is a guide to the size of work, not a hard limit;
 | # | Task | Done when | Status |
 |---|---|---|---|
 | 0 | Commit plan, task list, research doc, `CLAUDE.md` | AI context and sources are in the repo | done |
-| 1 | **Fixture capture** (`scripts/capture-fixture`): material blocks (number, hash, parent hash, timestamp, raw logs) for the 4 demo vaults, plus recorded `eth_call` results the service needs (vault `name`/`asset`, token `symbol`/`decimals`) | `fixtures/base-timelocks.json` committed; regenerated with one command given `RPC_URL` | done (648 logs, 172 headers, 58 recorded calls) |
+| 1 | **Fixture capture** (`pnpm capture-fixture`): material blocks (number, hash, parent hash, timestamp, raw logs) for the 4 demo vaults, plus recorded `eth_call` results the service needs (vault `name`/`asset`, token `symbol`/`decimals`) | `fixtures/base-timelocks.json` committed; regenerated with one command given `RPC_URL` | done (648 logs, 172 headers, 58 recorded calls) |
 | 2 | **mock-rpc**: `eth_chainId`, `eth_blockNumber`, `eth_getLogs`, `eth_getBlockByNumber`, `eth_call` (from the recorded table); virtual head; `reset` / `play` / `pause` / `advance-to` | viem pointed at mock-rpc returns the same logs as Alchemy for the same range | done (9 tests; 333 Submits served via viem) |
 | 3 | **Schema**: migrations for `vault`, `vault_event`, `timelock_change`, `subscription`, `delivery` | `pnpm migrate` runs clean on a fresh DB | done |
 | 4 | **Decoding**: calldata → function + args; `idData` → collateral / market / adapter label; selector → name; `unlimited` caps; unknown selectors kept raw | Unit tests pass on real calldata samples from the fixture | done (10 tests on real calldata) |
@@ -20,7 +20,16 @@ The 5-hour figure in the brief is a guide to the size of work, not a hard limit;
 | 11 | **Mock receivers** `/ok` `/flaky` `/down` `/slow`, `POST /control/register` (path + secret), `GET /received` | Receivers verify signatures and count duplicate delivery ids | done |
 | 12 | **Replay script** with assertions | One command: reset → subscribe (register secrets) → play → timeline + pass/fail | done (all 6 checks pass against the compose stack) |
 | 13 | **Roles + docker-compose**: `indexer`, `worker`, `api`, `mock-rpc`, `mock-receivers`, `postgres` | `docker compose up` + replay works with no RPC key | done (second indexer refused by the lock; acts as hot standby) |
-| 14 | **README** (architecture + run) and **BusinessCase.md** (1 page) | Brief deliverables complete | todo |
+| 14 | **README** (architecture + run) and **BusinessCase.md** (1 page) | Brief deliverables complete | done (plus real example alerts in `examples/webhooks/`) |
 
-Cut list, if needed, in this order: mock-rpc fault injection → `/slow` receiver → `stale` filter → role split (fall back to `ROLE=all`).
-Stretch, after 14: `change.executable` alert; reorg scenario in the fixture.
+Cut list (not needed in the end): mock-rpc fault injection → `/slow` receiver → `stale` filter → role split.
+Not built (listed as next steps in BusinessCase.md): `change.executable` alert; a reorg scenario in the fixture (reorg rewind is covered by an integration test instead).
+
+## Things the build taught us
+Findings the plan didn't anticipate, each caught by a test or the replay and fixed:
+1. **Base's block time isn't constant.** The fixture capture asserted 2s blocks and failed: by late 2026 Base produces several blocks per second. mock-rpc interpolates between real recorded headers instead.
+2. **viem caches `eth_blockNumber` for ~4s.** That hid head movement in replay; the service client sets `cacheTime: 0`.
+3. **Range halving oscillated.** After a provider rejected a log range, growing back past the rejected size caused a reject/succeed loop. The rejected size is now a ceiling.
+4. **Head-of-line blocking in the worker.** The replay showed that awaiting whole batches let one slow receiver stall everyone. Fixed with a continuous pool and a per-subscription in-flight cap, plus a regression test.
+5. **Egress proxies inside containers.** Docker injected the VM's proxy into containers, so internal calls (`http://mock-rpc:8545`) went through it. Compose sets `NO_PROXY` for service names (harmless elsewhere).
+6. **Demo hygiene.** Retries from a previous replay can arrive after a reset; the replay wipes the database before resetting receivers, and receivers ignore requests from before a reset.

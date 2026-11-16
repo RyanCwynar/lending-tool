@@ -1,0 +1,43 @@
+{
+  "type": "change.submitted",
+  "event": {
+    "name": "Submit",
+    "txHash": "0xb093cf6b6df20e777b6a9a4f2978830d0616ec4ab8672e112b74072c97d6e5e6",
+    "blockNumber": 55811859,
+    "blockTimestamp": "2026-11-10T23:19:07.000Z"
+  },
+  "vault": {
+    "name": "Gauntlet USDC Frontier",
+    "address": "0x1deefabee758aabdc29a542b24ca3b75afd56765"
+  },
+  "change": {
+    "id": 1662,
+    "args": {
+      "idData": "0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000e904aea5e1b110c9174728fa2effc8aed19e98ef000000000000000000000000000000000000000000000000000000000000000f636f6c6c61746572616c546f6b656e0000000000000000000000000000000000",
+      "newAbsoluteCap": "2000000000000"
+    },
+    "status": "PENDING",
+    "decoded": {
+      "capId": {
+        "kind": "collateral",
+        "token": "0xe904AEA5E1b110c9174728fA2efFc8aeD19E98Ef"
+      },
+      "summary": "Increase absolute cap on collateral PAXG to 2,000,000 USDC",
+      "capLabel": "collateral PAXG",
+      "unlimited": false,
+      "targetFunction": null,
+      "newCapFormatted": "2,000,000 USDC"
+    },
+    "summary": "Increase absolute cap on collateral PAXG to 2,000,000 USDC",
+    "submitTx": "0xb093cf6b6df20e777b6a9a4f2978830d0616ec4ab8672e112b74072c97d6e5e6",
+    "revokedBy": null,
+    "resolvedAt": null,
+    "resolvedTx": null,
+    "submittedAt": "2026-11-10T23:19:07.000Z",
+    "executableAt": "2026-11-13T23:19:07.000Z",
+    "functionName": "increaseAbsoluteCap",
+    "isTimelockedFunction": true
+  },
+  "chainId": 8453,
+  "deliveryId": "e0845ec0-6389-4300-ba57-793ff1b16ba1"
+}

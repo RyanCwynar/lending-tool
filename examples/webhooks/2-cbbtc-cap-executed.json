@@ -1,0 +1,43 @@
+{
+  "type": "change.executed",
+  "event": {
+    "name": "Accept",
+    "txHash": "0x53cc04bd1588210c409f682d19ee8f79a73ee5544fa741c96da5b427fa05303c",
+    "blockNumber": 56526877,
+    "blockTimestamp": "2026-11-12T15:02:31.000Z"
+  },
+  "vault": {
+    "name": "Steakhouse High Yield USDC Edition",
+    "address": "0xbeeff2490feffa212fac2f6553682c219e6a8845"
+  },
+  "change": {
+    "id": 1661,
+    "args": {
+      "idData": "0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000cbb7c0000ab88b473b1f5afd9ef808440eed33bf000000000000000000000000000000000000000000000000000000000000000f636f6c6c61746572616c546f6b656e0000000000000000000000000000000000",
+      "newAbsoluteCap": "500000000000000"
+    },
+    "status": "EXECUTED",
+    "decoded": {
+      "capId": {
+        "kind": "collateral",
+        "token": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"
+      },
+      "summary": "Increase absolute cap on collateral cbBTC to 500,000,000 USDC",
+      "capLabel": "collateral cbBTC",
+      "unlimited": false,
+      "targetFunction": null,
+      "newCapFormatted": "500,000,000 USDC"
+    },
+    "summary": "Increase absolute cap on collateral cbBTC to 500,000,000 USDC",
+    "submitTx": "0x110954fd52ce28366eb2a536f006420d671a2ec6879c5c0cdc1649daae38f7b9",
+    "revokedBy": null,
+    "resolvedAt": "2026-11-12T15:02:31.000Z",
+    "resolvedTx": "0x53cc04bd1588210c409f682d19ee8f79a73ee5544fa741c96da5b427fa05303c",
+    "submittedAt": "2026-11-09T07:44:11.000Z",
+    "executableAt": "2026-11-12T07:44:11.000Z",
+    "functionName": "increaseAbsoluteCap",
+    "isTimelockedFunction": true
+  },
+  "chainId": 8453,
+  "deliveryId": "781853a9-601b-4fc2-b21e-2597b2024f7a"
+}

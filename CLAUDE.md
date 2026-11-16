@@ -35,8 +35,11 @@ The product is a **Vault V2 timelock watcher**: it indexes `Submit` / `Accept` /
 ## Commands (from `service/`)
 - `pnpm dev`: run with `.env`
 - `pnpm migrate`: apply SQL migrations
-- `pnpm test` (Vitest) · `pnpm typecheck` · `pnpm build`
-- `docker compose up` from the repo root boots Postgres and the app
+- `pnpm test` (Vitest; unit only) · `TEST_DATABASE_URL=postgres://… pnpm test` (adds integration tests on real Postgres) · `pnpm typecheck` · `pnpm build`
+- `pnpm mock-rpc` · `pnpm mock-receivers` · `pnpm replay` · `RPC_URL=… pnpm capture-fixture`
+- From the repo root: `docker compose up -d` (offline demo stack), `docker compose run --rm --build replay` (end-to-end check)
+- `ROLE=indexer|worker|api|all` selects what a process runs; config is validated in `src/config.ts`
+- Before claiming a change works: typecheck, full test suite with `TEST_DATABASE_URL`, and the replay (it caught a real worker bug that unit tests didn't)
 
 ## Environment notes
 - Network goes through a proxy; blocked hosts show up in `devvm-why`. Free public Base RPCs don't serve historical `eth_getLogs` (see research §2); Alchemy does.
