@@ -5,3 +5,5 @@ dist/
 # Upstream Morpho contract repos, cloned locally for reference only (see README)
 reference/
 .pnpm-store/
+# Claude Code agent worktrees
+.claude/worktrees/
