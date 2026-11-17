@@ -14,6 +14,10 @@ import { describeChange, capIdLabel, formatAssetAmount } from "../chain/describe
 import { queueDeliveries, type AlertPayload, type AlertType } from "../delivery/outbox.js";
 import { applyEvents, changeKey, type ChainEvent } from "./lifecycle.js";
 import { ChainReader, isRangeError, type TimelockLog } from "./chain-reader.js";
+import { undoAbove } from "./rewind.js";
+
+/** The cursor was not where this tick started (a rewind ran concurrently); the tick's transaction is rolled back. */
+class CursorMovedError extends Error {}
 
 export interface VaultRow {
   address: `0x${string}`;
@@ -142,12 +146,19 @@ export class Indexer {
       if (id?.kind === "market") await Promise.all([this.chain.token(id.collateralToken), this.chain.token(id.loanToken)]);
     }
 
-    const stats = await withTransaction(this.pool, (c) => this.applyRange(c, logs, timestamps, to, end!, head));
-    return { kind: "indexed", from, to, events: logs.length, ...stats };
+    try {
+      const stats = await withTransaction(this.pool, (c) => this.applyRange(c, from, logs, timestamps, to, end!, head));
+      return { kind: "indexed", from, to, events: logs.length, ...stats };
+    } catch (err) {
+      if (!(err instanceof CursorMovedError)) throw err;
+      this.log.warn({ from, to }, "cursor moved during tick (rewind?); range rolled back, will re-read the cursor");
+      return { kind: "waiting", head, cursor: cursor.lastBlock };
+    }
   }
 
   private async applyRange(
     c: pg.PoolClient,
+    from: number,
     logs: TimelockLog[],
     timestamps: Map<number, number>,
     to: number,
@@ -210,12 +221,14 @@ export class Indexer {
       }
     }
 
-    // 4. Advance the cursor in the same transaction.
-    await c.query(
+    // 4. Advance the cursor in the same transaction, but only from where this tick started. If a rewind moved it
+    //    meanwhile, roll the whole range back rather than jump the cursor over what the rewind just deleted.
+    const moved = await c.query(
       `UPDATE sync_cursor SET last_block = $2, block_hash = $3, block_timestamp = to_timestamp($4), head_block = $5,
-              updated_at = now() WHERE stream = $1`,
-      [this.stream, to, hexToBuf(end.hash), end.timestamp, head],
+              updated_at = now() WHERE stream = $1 AND last_block = $6`,
+      [this.stream, to, hexToBuf(end.hash), end.timestamp, head, from - 1],
     );
+    if (moved.rowCount !== 1) throw new CursorMovedError();
     return { created, resolved, deliveries };
   }
 
@@ -284,11 +297,7 @@ export class Indexer {
 
   /**
    * The stored cursor block is no longer canonical: a reorg deeper than CONFIRMATIONS. We don't keep every block
-   * hash, so rewind a fixed distance and re-index. Undo order matters (foreign keys and the status CHECK):
-   *   1. changes resolved above the fork go back to PENDING,
-   *   2. changes submitted above the fork are deleted (their pending deliveries cascade),
-   *   3. undelivered alerts for events above the fork are deleted,
-   *   4. raw events above the fork are deleted, and the cursor moves back.
+   * hash, so rewind a fixed distance and re-index (undo logic shared with the rewind CLI: see rewind.ts).
    * Alerts already delivered cannot be recalled; that is why we wait for confirmations (documented limitation).
    */
   private async rewind(cursor: Cursor, head: number): Promise<TickResult> {
@@ -298,22 +307,9 @@ export class Indexer {
     );
     const b = await this.chain.block(fork);
     this.log.error({ storedHash: cursor.blockHash, block: cursor.lastBlock, rewindTo: fork }, "reorg detected: cursor block no longer canonical; rewinding");
-    await withTransaction(this.pool, async (c) => {
-      await c.query(
-        `UPDATE timelock_change SET status = 'PENDING', resolve_event_id = NULL, resolved_block = NULL,
-                resolved_tx = NULL, resolved_at = NULL, revoked_by = NULL
-          WHERE resolved_block > $1`,
-        [fork],
-      );
-      await c.query("DELETE FROM delivery WHERE block_number > $1 AND status = 'PENDING'", [fork]);
-      await c.query("DELETE FROM timelock_change WHERE submitted_block > $1", [fork]);
-      await c.query("DELETE FROM vault_event WHERE block_number > $1", [fork]);
-      await c.query(
-        `UPDATE sync_cursor SET last_block = $2, block_hash = $3, block_timestamp = to_timestamp($4), head_block = $5,
-                updated_at = now() WHERE stream = $1`,
-        [this.stream, fork, hexToBuf(b.hash), b.timestamp, head],
-      );
-    });
+    await withTransaction(this.pool, (c) =>
+      undoAbove(c, this.stream, { number: fork, ...b }, { includeDelivered: false, head }),
+    );
     return { kind: "reorg", rewoundTo: fork };
   }
 
