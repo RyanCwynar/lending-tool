@@ -3,7 +3,7 @@
 #
 #   ./demo goto 2026-06-01        go to a date: back = rewind (forget everything after it), forward = replay up to it
 #   ./demo goto start | end       the beginning / end of the recorded history (2025-10-22 .. 2026-11-16)
-#   ./demo play [speed]           run time forward, e.g. 1d/2s (default), 1w/1s, 6h/1s
+#   ./demo play [speed]           run time forward, e.g. 1d/1s (default), 1w/1s, 6h/1s
 #   ./demo pause
 #   ./demo subscribe [endpoint] [function…]
 #                                 subscribe a mock receiver (/ok default; /flaky /down /slow), optionally only to some
@@ -122,7 +122,7 @@ status() {
 
 case "${1:-}" in
   goto)  goto "${2:-}" ;;
-  play)  control "play?speed=${2:-1d/2s}" | field virtualNow | sed 's/^/playing from /' ;;
+  play)  control "play?speed=${2:-1d/1s}" | field virtualNow | sed 's/^/playing from /' ;;
   pause) control pause | field headTimestamp | sed 's/^/paused at /' ;;
   subscribe) shift; subscribe "$@" ;;
   status) status ;;

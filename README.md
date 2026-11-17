@@ -78,7 +78,7 @@ Each line shows when the event happened onchain, which subscription received it,
 | Command | What it does |
 |---|---|
 | `./demo goto <date \| start \| end>` | Go to a date (UTC; a bare date means midnight). **Back** rewinds: everything after it is forgotten. **Forward** replays the events in between. |
-| `./demo play [speed]` / `pause` | Run time forward (`1d/2s` default, `6h/1s`, `1w/1s`, …) / stop |
+| `./demo play [speed]` / `pause` | Run time forward (`1d/1s` default, `6h/1s`, `1w/1s`, …) / stop |
 | `./demo subscribe [endpoint] [function…]` | Subscribe `/ok` (default), `/flaky`, `/down` or `/slow`, optionally to some functions only. It receives events after the current point. |
 | `./demo watch` / `status` | Live webhook feed / chain time, indexed-up-to time, deliveries per subscription |
 | `./demo reset` | Clean slate |
