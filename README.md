@@ -1,4 +1,4 @@
-# Vault V2 Timelock Watcher
+# Vault V2 Timelock Notifier
 
 **Push alerts for curator policy changes on Morpho Vault V2, read straight from the chain.**
 

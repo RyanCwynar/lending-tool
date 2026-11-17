@@ -1,4 +1,4 @@
-# Business case: Vault V2 Timelock Watcher
+# Business case: Vault V2 Timelock Notifier
 
 ## What we built
 A backend service that watches Morpho Vault V2 vaults on Base directly onchain and **pushes signed webhook alerts** when a curator submits, executes or revokes a timelocked change, decoded into plain language: *"Increase absolute cap on collateral cbBTC to 500,000,000 USDC, executable 2026-11-12 07:44."* A GraphQL API shows what is pending, what can execute now and how each delivery went. A replay harness runs 13 months of real Base history through the unmodified service in under three minutes.

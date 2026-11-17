@@ -78,7 +78,7 @@ function startApi() {
     schema,
     context: () => context,
     // Demo walkthrough as GraphiQL tabs (src/graphql/playground.ts).
-    graphiql: { title: "Vault V2 Timelock Watcher", defaultTabs: playgroundTabs },
+    graphiql: { title: "Vault V2 Timelock Notifier", defaultTabs: playgroundTabs },
     renderGraphiQL: graphiqlPage,
   });
   server = createServer(yoga);

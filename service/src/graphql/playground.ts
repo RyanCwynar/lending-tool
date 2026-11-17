@@ -8,7 +8,7 @@
  */
 import { renderGraphiQL } from "graphql-yoga";
 
-export const PLAYGROUND_VERSION = "2026-11-16.2";
+export const PLAYGROUND_VERSION = "2026-11-17.1";
 
 const CBBTC_TX = "0x110954fd52ce28366eb2a536f006420d671a2ec6879c5c0cdc1649daae38f7b9";
 const SYRUP_REVOKE_TX = "0xfa137b501b824da815e994fd94fe1f1f69524464fd4e61746be5c6ee78b3839a";
@@ -27,7 +27,7 @@ const tab = (query: string, variables?: Record<string, unknown>): PlaygroundTab 
 export const playgroundTabs: PlaygroundTab[] = [
   tab(`
 # ─────────────────────────────────────────────────────────────────────────────
-#  Vault V2 Timelock Watcher: demo walkthrough (one tab per step, run with ▶)
+#  Vault V2 Timelock Notifier: demo walkthrough (one tab per step, run with ▶)
 # ─────────────────────────────────────────────────────────────────────────────
 # Curators must announce risk-raising changes (cap increases, new adapters, fee
 # changes) and wait out a timelock before anyone can execute them. This service

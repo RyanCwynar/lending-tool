@@ -4,7 +4,7 @@ Context for AI assistants working in this repo. It is committed on purpose: the 
 
 ## What this is
 Ryan Cwynar's take-home for Morpho's backend engineering assessment (brief: `docs/BRIEF.md`).
-The product is a **Vault V2 timelock watcher**: it indexes `Submit` / `Accept` / `Revoke` on a few Base (chain 8453) Vault V2 vaults straight from the chain and delivers signed webhook alerts to subscribed systems.
+The product is the **Vault V2 Timelock Notifier** (repo `vault-timelock-notifier`; called the "timelock watcher" in the plan and task docs, which record how it was built): it indexes `Submit` / `Accept` / `Revoke` on a few Base (chain 8453) Vault V2 vaults straight from the chain and delivers signed webhook alerts to subscribed systems.
 
 - Design and rationale: `docs/PLAN.md`
 - Ordered tasks with done-criteria: `docs/TASKS.md` (update the Status column as tasks finish)

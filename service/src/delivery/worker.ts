@@ -132,7 +132,7 @@ export class DeliveryWorker {
     const signature = sign(secret, Math.floor(this.now().getTime() / 1000), body);
     const outcome = await this.post(d.url, body, {
       "content-type": "application/json",
-      "user-agent": "vault-v2-timelock-watcher/0.1",
+      "user-agent": "vault-timelock-notifier/0.1",
       [DELIVERY_ID_HEADER]: d.id,
       [SIGNATURE_HEADER]: signature,
     });

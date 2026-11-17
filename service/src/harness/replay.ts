@@ -66,7 +66,7 @@ const short = (s: string) => `${s.slice(0, 10)}…`;
 const day = (iso: string) => iso.slice(0, 16).replace("T", " ");
 
 async function main() {
-  console.log(`${c.bold}Vault V2 timelock watcher: replay of recorded Base history${c.reset}`);
+  console.log(`${c.bold}Vault V2 Timelock Notifier: replay of recorded Base history${c.reset}`);
 
   // 1. Reset, in an order that keeps runs independent:
   //    a. chain head back to the start and paused, so the indexer has nothing new to do;

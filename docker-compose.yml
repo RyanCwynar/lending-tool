@@ -1,4 +1,4 @@
-# Vault V2 timelock watcher.
+# Vault V2 Timelock Notifier.
 #
 # `docker compose up` starts the OFFLINE DEMO: the three service roles plus mock-rpc (recorded Base history,
 # no RPC key needed) and mock-receivers (webhook endpoints). Then run the replay:

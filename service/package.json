@@ -1,5 +1,5 @@
 {
-  "name": "morpho-lending-tool",
+  "name": "vault-timelock-notifier",
   "version": "0.1.0",
   "private": true,
   "type": "module",
