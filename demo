@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Drive the offline demo's clock from the command line (needs `docker compose up -d` first).
+# Drive the offline demo from the command line (needs `docker compose up -d` first).
 #
 #   ./demo goto 2026-06-01        go to a date: back = rewind (forget everything after it), forward = replay up to it
 #   ./demo goto start | end       the beginning / end of the recorded history (2025-10-22 .. 2026-11-16)
 #   ./demo play [speed]           run time forward, e.g. 1d/2s (default), 1w/1s, 6h/1s
 #   ./demo pause
+#   ./demo subscribe [endpoint] [function…]
+#                                 subscribe a mock receiver (/ok default; /flaky /down /slow), optionally only to some
+#                                 functions (e.g. increaseAbsoluteCap addAdapter). Gets events after the current point.
 #   ./demo status                 chain time, indexer time, deliveries per subscription
 #   ./demo watch                  live feed of webhooks as the receivers get them (Ctrl-C to stop)
+#   ./demo reset                  clean slate: back to the start, every subscription deactivated, receivers cleared
 #
 # Dates are UTC; a bare date means midnight at the start of that day. goto leaves the clock paused.
 set -euo pipefail
@@ -21,9 +25,86 @@ RPC_PORT=$(port mock-rpc 8545); [ -n "$RPC_PORT" ] || die "mock-rpc isn't runnin
 RPC="http://localhost:$RPC_PORT"
 control() { curl -sf -XPOST "$RPC/control/$1" || die "mock-rpc request failed: /control/$1"; }
 
-gql() {
+receivers() {
+  local p; p=$(port mock-receivers 9000); [ -n "$p" ] || die "mock-receivers isn't running"
+  curl -sf -XPOST "http://localhost:$p/control/$1" ${2:+-d "$2"} >/dev/null || die "mock-receivers request failed: /control/$1"
+}
+
+gql() { gql_body "{\"query\":\"$1\"}"; }
+gql_body() {
   local p; p=$(port api 4000); [ -n "$p" ] || die "api isn't running"
-  curl -sf "http://localhost:$p/graphql" -H 'content-type: application/json' -d "{\"query\":\"$1\"}" || die "api request failed"
+  curl -sf "http://localhost:$p/graphql" -H 'content-type: application/json' -d "$1" || die "api request failed"
+}
+
+goto() {
+  local target=${1:-} s at out
+  [ -n "$target" ] || die "usage: ./demo goto <date | start | end>"
+  control pause >/dev/null
+  case "$target" in
+    start) s=$(control "advance-to?block=$(curl -sf "$RPC/control/state" | field fromBlock)") ;;
+    end)   s=$(control "advance-to?block=$(curl -sf "$RPC/control/state" | field toBlock)") ;;
+    *)
+      [[ "$target" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[+-][0-9]{2}:[0-9]{2})?)?$ ]] \
+        || die "not a date: $target (use 2026-06-01 or 2026-06-01T12:00:00Z)"
+      s=$(control "advance-to?time=$target") ;;
+  esac
+  at=$(echo "$s" | field headTimestamp)
+  # Back in time: forget everything the service learned after the new chain time. Forward: nothing to undo,
+  # the indexer just catches up and sends the alerts in between.
+  out=$(docker compose exec -T indexer node dist/indexer/rewind-cli.js "$at")
+  case "$out" in
+    nothing*) echo "moved forward to $at; the indexer is replaying the events in between" ;;
+    *)        echo "$out" ;;
+  esac
+  wait_for_indexer "$(echo "$s" | field head)"
+  echo "clock paused at $at"
+}
+
+# Return once the indexer has caught up with the mock chain's head (it stays CONFIRMATIONS blocks behind), so a
+# subscription created next starts from the new point in time rather than wherever the indexer had got to.
+wait_for_indexer() {
+  local head=$1 conf last i
+  conf=$(docker compose exec -T indexer printenv CONFIRMATIONS 2>/dev/null || echo 10)
+  for i in $(seq 1 240); do
+    last=$(gql '{ health { indexer { lastBlock } } }' | field lastBlock)
+    [ -n "$last" ] && [ "$last" -ge $((head - conf)) ] && return 0
+    sleep 0.5
+  done
+  echo "(the indexer is still catching up; ./demo status shows how far it has got)"
+}
+
+subscribe() {
+  local endpoint=${1:-/ok}; shift || true
+  case "$endpoint" in /ok|/flaky|/down|/slow) ;; *) die "endpoint must be /ok, /flaky, /down or /slow" ;; esac
+  # A tag per subscription: the receivers keep one secret per full path, so two subscriptions to /ok don't clash.
+  local path="$endpoint?sub=$(date +%s%N | tail -c 7)" fns="" f
+  for f in "$@"; do fns="$fns${fns:+,}\"$f\""; done
+  local out id secret
+  out=$(gql_body "{\"query\":\"mutation(\$i: CreateSubscriptionInput!) { createSubscription(input: \$i) { secret subscription { id startBlock } } }\",
+                   \"variables\":{\"i\":{\"url\":\"http://mock-receivers:9000$path\"${fns:+,\"functions\":[$fns]}}}}")
+  secret=$(echo "$out" | field secret); id=$(echo "$out" | field id)
+  [ -n "$secret" ] || die "subscription rejected: $out"
+  # The demo receivers check signatures, so they need the secret; a real subscriber would store it instead.
+  receivers register "{\"path\":\"$path\",\"secret\":\"$secret\"}"
+  echo "subscribed $path${fns:+ to $*} (id $id)"
+  echo "  signing secret $secret (shown once by the API; handed to the mock receiver)"
+  echo "  receives events after block $(echo "$out" | field startBlock), i.e. from the current indexed point on"
+}
+
+reset() {
+  local ids id n=0
+  # Deactivate first, so nothing new is queued for the old subscriptions while we rewind.
+  ids=$(gql '{ subscriptions { id active } }' | grep -oE '"id":"[^"]+","active":true' | sed -E 's/"id":"([^"]+)".*/\1/' || true)
+  for id in $ids; do
+    gql_body "{\"query\":\"mutation { deactivateSubscription(id: \\\"$id\\\") { id } }\"}" >/dev/null
+    n=$((n + 1))
+  done
+  echo "deactivated $n subscription(s)"
+  goto start
+  # Any send already in flight lands within the delivery timeout; clear the receivers after it.
+  sleep 6
+  receivers reset
+  echo "receivers cleared"
 }
 
 status() {
@@ -32,37 +113,20 @@ status() {
   h=$(gql '{ health { indexer { chainTime } } }')
   echo "chain time    $(echo "$s" | field headTimestamp)  ($( [ "$(echo "$s" | field playing)" = true ] && echo playing || echo paused))"
   echo "indexed up to $(echo "$h" | field chainTime)"
+  # Active subscriptions only (./demo reset deactivates the old ones).
   gql '{ subscriptions { url active deliveryCounts { pending delivered failed } } }' \
-    | grep -oE '"url":"[^"]*","active":[a-z]+,"deliveryCounts":\{[^}]*\}' \
-    | sed -E 's/"url":"([^"]*)","active":([a-z]+),"deliveryCounts":\{"pending":([0-9]+),"delivered":([0-9]+),"failed":([0-9]+)\}/  \1  delivered \4  pending \3  failed \5  (active: \2)/' \
-    || echo "  (no subscriptions)"
+    | grep -oE '"url":"[^"]*","active":true,"deliveryCounts":\{[^}]*\}' \
+    | sed -E 's/"url":"([^"]*)","active":true,"deliveryCounts":\{"pending":([0-9]+),"delivered":([0-9]+),"failed":([0-9]+)\}/  \1  delivered \3  pending \2  failed \4/' \
+    || echo "  (no active subscriptions; ./demo subscribe adds one)"
 }
 
 case "${1:-}" in
-  goto)
-    target=${2:-}; [ -n "$target" ] || die "usage: ./demo goto <date | start | end>"
-    control pause >/dev/null
-    case "$target" in
-      start) s=$(control "advance-to?block=$(curl -sf "$RPC/control/state" | field fromBlock)") ;;
-      end)   s=$(control "advance-to?block=$(curl -sf "$RPC/control/state" | field toBlock)") ;;
-      *)
-        [[ "$target" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[+-][0-9]{2}:[0-9]{2})?)?$ ]] \
-          || die "not a date: $target (use 2026-06-01 or 2026-06-01T12:00:00Z)"
-        s=$(control "advance-to?time=$target") ;;
-    esac
-    at=$(echo "$s" | field headTimestamp)
-    # Back in time: forget everything the service learned after the new chain time. Forward: nothing to undo,
-    # the indexer just catches up and sends the alerts in between.
-    out=$(docker compose exec -T indexer node dist/indexer/rewind-cli.js "$at")
-    case "$out" in
-      nothing*) echo "moved forward to $at; the indexer is replaying events up to it (./demo watch to see them)" ;;
-      *)        echo "$out" ;;
-    esac
-    echo "clock paused at $at"
-    ;;
+  goto)  goto "${2:-}" ;;
   play)  control "play?speed=${2:-1d/2s}" | field virtualNow | sed 's/^/playing from /' ;;
   pause) control pause | field headTimestamp | sed 's/^/paused at /' ;;
+  subscribe) shift; subscribe "$@" ;;
   status) status ;;
-  watch) exec docker compose logs -f --tail 0 --no-log-prefix mock-receivers ;;
-  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  watch) docker compose logs -f --tail 0 --no-log-prefix mock-receivers | sed -u 's/^\[receivers\] //' ;;
+  reset) reset ;;
+  *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

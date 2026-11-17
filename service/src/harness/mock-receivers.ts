@@ -120,7 +120,12 @@ export function createMockReceivers(
     const secret = state.secrets.get(`${url.pathname}${url.search}`) ?? state.secrets.get(path);
     const sig = secret ? verify(secret, req.headers[SIGNATURE_HEADER] as string | undefined, body, now()) : null;
     const signature: Received["signature"] = sig === null ? "no-secret" : sig.ok ? "ok" : sig.reason;
-    let parsed: { type?: string; change?: { summary?: string }; event?: { txHash?: string } } = {};
+    let parsed: {
+      type?: string;
+      change?: { summary?: string };
+      vault?: { name?: string };
+      event?: { txHash?: string; blockTimestamp?: string };
+    } = {};
     try {
       parsed = JSON.parse(body);
     } catch {
@@ -161,7 +166,11 @@ export function createMockReceivers(
       at: new Date().toISOString(),
     });
     state.received.set(path, list);
-    log(`${path} ${status} ${parsed.type ?? "?"} ${parsed.change?.summary ?? ""}${duplicate ? " (duplicate)" : ""}`);
+    // One line per request: when the event happened onchain (not when the webhook arrived), the full path incl. query
+    // (e.g. /ok?sub=123456, so subscriptions sharing an endpoint can be told apart), the response, and the attempt.
+    const onchain = parsed.event?.blockTimestamp?.slice(0, 16).replace("T", " ") ?? "????-??-?? ??:??";
+    const what = `${parsed.type ?? "?"}  ${parsed.vault?.name ?? ""}: ${parsed.change?.summary ?? ""}`;
+    log(`${onchain}  ${`${path}${url.search}`.padEnd(18)} ${status}${attempt > 1 ? ` (attempt ${attempt})` : ""}  ${what}${duplicate ? " (duplicate)" : ""}`);
     if (!res.destroyed) send(res, status, { ok: status === 200 });
   });
   return { server, state };
