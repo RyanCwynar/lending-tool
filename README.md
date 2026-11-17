@@ -41,6 +41,8 @@ x-signature:   t=1794850000,v1=5f0c…                    HMAC-SHA256(secret, "<
 ```
 Subscribe through the API (`createSubscription`, optionally filtered by vault and function) and keep the secret it returns once. To accept a webhook: verify the signature in constant time, reject a `t` older than 5 minutes, dedupe on `x-delivery-id`, and answer 2xx within 5 s. Anything else is retried after 30s, 2m, 10m, 1h, 3h, 6h and 12h; after 8 failed attempts the delivery is marked `FAILED` and shows as failed in the API. Full real examples and a verification function: [examples/webhooks/](examples/webhooks/).
 
+**Delivery contract: at-least-once, unordered, self-describing.** Each alert is sent and retried on its own, so one failing alert never holds up the ones behind it. A strict per-subscriber queue would make a fresh `submitted` warning wait behind an old failed alert for up to 22 h, which defeats the point of a warning. Order isn't needed to get the state right: every alert carries the change's id and the state its event produced, and a change only moves PENDING → EXECUTED or REVOKED. So the receiver rule is: dedupe on `x-delivery-id`; per `change.id`, `change.executed` / `change.revoked` is final, and a `change.submitted` arriving after it can be ignored. This holds even when both happen in the same transaction (zero-timelock vaults, [example 5](examples/webhooks/5-zero-timelock-executed-same-tx.json)), where block numbers can't order them.
+
 ## Quick start (offline, no RPC key)
 Requires Docker. This replays 13 months of **real recorded Base history** through the unmodified service:
 ```bash
@@ -165,5 +167,6 @@ The integration tests create and drop their own databases. They replay the fixtu
 - Watched vaults come from config, not factory discovery. A vault added later than the cursor isn't backfilled automatically.
 - Only the Morpho Market V1 adapter's cap ids are decoded into labels; other adapters show raw ids.
 - A webhook already delivered for an event that is later reorged out can't be recalled (that's why we wait for confirmations).
+- Alerts can arrive out of order (see the delivery contract). If a receiver can't apply the per-change rule, the worker could hold a change's `executed` alert until its `submitted` alert has been delivered or has failed. That orders alerts within a change while still never blocking other changes; it wasn't built, because the rule makes it unnecessary.
 - No subscriber authentication: anyone who can reach the API can create subscriptions. Production would add API keys (stored hashed: verify-only secrets *should* be hashed).
 - mock-rpc interpolates timestamps of blocks it didn't record (Base's block time changed over the period); recorded blocks are exact.
