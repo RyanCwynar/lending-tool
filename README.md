@@ -49,6 +49,16 @@ mutation {
 }
 ```
 Replay knobs: `SPEED=1w/1s`, `TIMELINE=all|notable|none`. The mock chain can also be driven by hand: `curl -XPOST 'localhost:8545/control/advance-to?time=2026-11-12T15:00:00Z'`, `/control/play?speed=1d/2s`, `/control/pause`, `/control/faults?rate429=0.2&rangeLimit=5000`.
+
+**Time travel** with `./demo` (wraps the calls above; ports are looked up from Docker):
+```bash
+./demo goto 2026-06-01     # back: rewind, forgetting every event/change/alert after it; forward: replay up to it
+./demo goto start | end    # beginning / end of the recording (events span 2025-10-22 .. 2026-11-12)
+./demo play 1d/2s          # run time forward; ./demo pause to stop
+./demo watch               # live feed of webhooks arriving (second terminal)
+./demo status              # chain time, indexed-up-to time, deliveries per subscription
+```
+Going back moves the mock chain's clock and then runs the rewind, which works against any node: `docker compose exec indexer node dist/indexer/rewind-cli.js 2026-06-01` forgets everything after that time (changes resolved later go back to PENDING; subscriptions are kept), and the indexer re-indexes forward from there and re-sends those alerts with new `X-Delivery-Id`s. It's safe while the service runs. Against a real node, that re-processes history (useful after fixing a decoder bug).
 If ports 4000/5432/8545/9000 are taken: `API_PORT=4100 PG_PORT=55433 MOCK_RPC_PORT=18546 MOCK_RECEIVERS_PORT=19000 docker compose up -d`.
 
 ### Live mode (real Base)
