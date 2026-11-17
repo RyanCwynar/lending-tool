@@ -41,6 +41,17 @@ x-signature:   t=1794850000,v1=5f0c…                    HMAC-SHA256(secret, "<
 ```
 Subscribe through the API (`createSubscription`, optionally filtered by vault and function) and keep the secret it returns once. To accept a webhook: verify the signature in constant time, reject a `t` older than 5 minutes, dedupe on `x-delivery-id`, and answer 2xx within 5 s. Anything else is retried after 30s, 2m, 10m, 1h, 3h, 6h and 12h; after 8 failed attempts the delivery is marked `FAILED` and shows as failed in the API. Full real examples and a verification function: [examples/webhooks/](examples/webhooks/).
 
+**Delivery contract: at-least-once, unordered, self-describing.** Each alert is sent and retried on its own, so one failing alert never holds up the ones behind it. A strict per-subscriber queue would make a fresh `submitted` warning wait behind an old failed alert for up to 22 h, which defeats the point of a warning. Order isn't needed to get the state right: every alert carries the change's id and the state its event produced, and a change only moves PENDING → EXECUTED or REVOKED. So the receiver rule is: dedupe on `x-delivery-id`; per `change.id`, `change.executed` / `change.revoked` is final, and a `change.submitted` arriving after it can be ignored. This holds even when both happen in the same transaction (zero-timelock vaults, [example 5](examples/webhooks/5-zero-timelock-executed-same-tx.json)), where block numbers can't order them.
+
+## Who runs it
+**The system that consumes the alerts runs its own copy.** An integrator, custodian, treasury or curator team deploys it next to their risk engine: one `docker compose`, their own RPC key, their own database. Their services subscribe through the GraphQL API, which is an **internal admin API**: keep it on a private network, not the public internet. For institutions this is usually the preferred model, because nothing sits between the chain and their risk engine except code they run and can read. It also means there's no multi-tenancy to get wrong.
+
+A **hosted, multi-tenant** version (one instance serving many subscribers, e.g. run by Morpho) is the natural next step, and it needs:
+- **identity:** API keys stored hashed, or Sign-In with Ethereum, which could also offer alerts for the vaults a wallet holds;
+- **ownership:** subscriptions and deliveries belong to an account, and every query is limited to the caller's own;
+- **self-serve tools:** a test webhook, secret rotation, re-sending failed deliveries;
+- **more ways in:** a "Notify me" button on vault pages in the Morpho app or Curator App, and Slack, Telegram or email behind the same outbox.
+
 ## Quick start (offline, no RPC key)
 Requires Docker. This replays 13 months of **real recorded Base history** through the unmodified service:
 ```bash
@@ -165,5 +176,6 @@ The integration tests create and drop their own databases. They replay the fixtu
 - Watched vaults come from config, not factory discovery. A vault added later than the cursor isn't backfilled automatically.
 - Only the Morpho Market V1 adapter's cap ids are decoded into labels; other adapters show raw ids.
 - A webhook already delivered for an event that is later reorged out can't be recalled (that's why we wait for confirmations).
-- No subscriber authentication: anyone who can reach the API can create subscriptions. Production would add API keys (stored hashed: verify-only secrets *should* be hashed).
+- Alerts can arrive out of order (see the delivery contract). If a receiver can't apply the per-change rule, the worker could hold a change's `executed` alert until its `submitted` alert has been delivered or has failed. That orders alerts within a change while still never blocking other changes; it wasn't built, because the rule makes it unnecessary.
+- The API has no authentication, by design for the self-hosted model (see [Who runs it](#who-runs-it)): anyone who can reach it can manage every subscription, so it must stay on a private network. A hosted version needs API keys (stored hashed: verify-only secrets *should* be hashed) and per-account ownership.
 - mock-rpc interpolates timestamps of blocks it didn't record (Base's block time changed over the period); recorded blocks are exact.
